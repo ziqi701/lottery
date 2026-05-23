@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>小伊卡抽奖 - 50人奖池</title>
     <!-- 引入 CloudBase Web SDK -->
-    <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/1.7.1/cloudbase.full.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@cloudbase/js-sdk@2.7.11/dist/cloudbase.full.js"></script>
     <style>
         :root { --pink: #ff6b9d; --pink-dark: #e8557d; --gold: #ffc107; --bg: #fff5f8; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -53,28 +53,43 @@
 
         // 加载奖池状态和记录
         async function loadData() {
-            // 奖池状态
-            const poolRes = await db.collection('lottery_pool').limit(1).get();
-            if (poolRes.data.length > 0) {
-                const pool = poolRes.data[0];
-                const status = pool.isFinished ? '已结束' : `进行中 (${pool.count}/${pool.maxCount})`;
-                document.getElementById('poolInfo').innerText = `奖池状态：${status} | 中奖者：${pool.winnerOpenid ? '已产生' : '等待中'}`;
-                if (pool.isFinished) document.getElementById('drawBtn').disabled = true;
+    try {
+        // 奖池状态
+        const poolRes = await db.collection('lottery_pool').limit(1).get();
+        const poolData = poolRes.data || [];
+        if (poolData.length > 0) {
+            const pool = poolData[0];
+            const status = pool.isFinished ? '已结束' : `进行中 (${pool.count}/${pool.maxCount})`;
+            document.getElementById('poolInfo').innerText = `奖池状态：${status} | 中奖者：${pool.winnerOpenid ? '已产生' : '等待中'}`;
+            if (pool.isFinished) {
+                document.getElementById('drawBtn').disabled = true;
             }
-            // 最近记录
-            const recordsRes = await db.collection('lottery_records').orderBy('createdAt', 'desc').limit(10).get();
-            const recordsHtml = recordsRes.data.map(r => {
-                const isWin = r.result === 'win';
-                const date = new Date(r.createdAt).toLocaleString('zh-CN');
-                return `<div class="record-item ${isWin ? 'win' : ''}">
-                    <span class="dot ${isWin ? 'dot-win' : 'dot-lose'}"></span>
-                    <span style="flex:1;">${r.openid?.slice(0,8)}***</span>
-                    <span>${isWin ? '🎉中奖' : '未中奖'}</span>
-                    <span style="font-size:11px;color:#999;">${date}</span>
-                </div>`;
-            }).join('');
-            document.getElementById('records').innerHTML = recordsHtml || '<div style="color:#ccc;">暂无记录</div>';
+        } else {
+            document.getElementById('poolInfo').innerText = '奖池状态：尚未初始化';
         }
+
+        // 最近记录
+        const recordsRes = await db.collection('lottery_records')
+            .orderBy('createdAt', 'desc')
+            .limit(10)
+            .get();
+        const records = recordsRes.data || [];
+        const recordsHtml = records.map(r => {
+            const isWin = r.result === 'win';
+            const date = r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN') : '未知时间';
+            return `<div class="record-item ${isWin ? 'win' : ''}">
+                <span class="dot ${isWin ? 'dot-win' : 'dot-lose'}"></span>
+                <span style="flex:1;">${(r.openid || '***').slice(0,8)}***</span>
+                <span>${isWin ? '🎉中奖' : '未中奖'}</span>
+                <span style="font-size:11px;color:#999;">${date}</span>
+            </div>`;
+        }).join('');
+        document.getElementById('records').innerHTML = recordsHtml || '<div style="color:#ccc;">暂无记录</div>';
+    } catch (err) {
+        console.error('加载数据失败', err);
+        document.getElementById('poolInfo').innerText = '加载状态失败，请刷新重试';
+    }
+}
 
         // 抽奖
         document.getElementById('drawBtn').addEventListener('click', async () => {
