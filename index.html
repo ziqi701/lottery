@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小伊卡抽奖 - 50人奖池</title>
+    <!-- 引入 CloudBase Web SDK -->
+    <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/1.7.1/cloudbase.full.js"></script>
+    <style>
+        :root { --pink: #ff6b9d; --pink-dark: #e8557d; --gold: #ffc107; --bg: #fff5f8; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .main { width: 100%; max-width: 420px; background: white; border-radius: 24px; box-shadow: 0 12px 40px rgba(255,107,157,0.15); padding: 30px 24px; text-align: center; }
+        .title { font-size: 26px; font-weight: 700; color: var(--pink-dark); margin-bottom: 4px; }
+        .subtitle { font-size: 13px; color: #999; margin-bottom: 24px; }
+        .pool-info { background: #fdf0f5; padding: 12px; border-radius: 16px; margin-bottom: 20px; font-size: 14px; color: #666; }
+        .btn { background: linear-gradient(135deg, var(--pink), var(--pink-dark)); color: white; border: none; width: 100%; padding: 16px; border-radius: 30px; font-size: 18px; font-weight: 600; letter-spacing: 2px; cursor: pointer; box-shadow: 0 8px 24px rgba(255,107,157,0.35); margin-top: 8px; }
+        .btn:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; }
+        .record-list { margin-top: 24px; max-height: 240px; overflow-y: auto; text-align: left; }
+        .record-item { padding: 8px 12px; background: #fafafa; border-radius: 8px; margin-bottom: 6px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+        .record-item.win { background: #fffde7; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-lose { background: #ccc; }
+        .dot-win { background: #ffc107; }
+    </style>
+</head>
+<body>
+    <div class="main">
+        <div class="title">🎲 小伊卡抽奖</div>
+        <div class="subtitle">50人奖池 · 必出一人</div>
+        <div class="pool-info" id="poolInfo">加载中...</div>
+        <button class="btn" id="drawBtn">✨ 开始抽奖 ✨</button>
+        <div class="record-list">
+            <div style="font-weight:600; margin-bottom:8px; color:#666;">📋 最近记录</div>
+            <div id="records"></div>
+        </div>
+    </div>
+
+    <script>
+        // ========== 1. 替换成你的 CloudBase 环境 ID ==========
+        const ENV_ID = "lottery-d1g9mpo0n625752b3";
+        
+        // 初始化 CloudBase
+        const app = cloudbase.init({ env: ENV_ID });
+        const auth = app.auth({ persistence: 'local' });
+        const db = app.database();
+
+        // 生成/读取用户唯一标识（使用匿名登录更稳定）
+        async function getOpenid() {
+            await auth.anonymousAuthProvider().signIn();
+            return auth.currentUser.uid;
+        }
+
+        // 加载奖池状态和记录
+        async function loadData() {
+            // 奖池状态
+            const poolRes = await db.collection('lottery_pool').limit(1).get();
+            if (poolRes.data.length > 0) {
+                const pool = poolRes.data[0];
+                const status = pool.isFinished ? '已结束' : `进行中 (${pool.count}/${pool.maxCount})`;
+                document.getElementById('poolInfo').innerText = `奖池状态：${status} | 中奖者：${pool.winnerOpenid ? '已产生' : '等待中'}`;
+                if (pool.isFinished) document.getElementById('drawBtn').disabled = true;
+            }
+            // 最近记录
+            const recordsRes = await db.collection('lottery_records').orderBy('createdAt', 'desc').limit(10).get();
+            const recordsHtml = recordsRes.data.map(r => {
+                const isWin = r.result === 'win';
+                const date = new Date(r.createdAt).toLocaleString('zh-CN');
+                return `<div class="record-item ${isWin ? 'win' : ''}">
+                    <span class="dot ${isWin ? 'dot-win' : 'dot-lose'}"></span>
+                    <span style="flex:1;">${r.openid?.slice(0,8)}***</span>
+                    <span>${isWin ? '🎉中奖' : '未中奖'}</span>
+                    <span style="font-size:11px;color:#999;">${date}</span>
+                </div>`;
+            }).join('');
+            document.getElementById('records').innerHTML = recordsHtml || '<div style="color:#ccc;">暂无记录</div>';
+        }
+
+        // 抽奖
+        document.getElementById('drawBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('drawBtn');
+            btn.disabled = true;
+            btn.textContent = '抽奖中...';
+            try {
+                const openid = await getOpenid();
+                const res = await app.callFunction({ name: 'draw', data: { openid } });
+                const result = res.result;
+                if (result.success) {
+                    alert(result.message);
+                } else {
+                    alert(result.message);
+                }
+            } catch (e) {
+                alert('网络错误，请重试');
+                console.error(e);
+            }
+            await loadData();
+            btn.disabled = false;
+            btn.textContent = '✨ 开始抽奖 ✨';
+        });
+
+        // 初始化
+        (async () => {
+            await getOpenid();
+            loadData();
+        })();
+    </script>
+</body>
+</html>
